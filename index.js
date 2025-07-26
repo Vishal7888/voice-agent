@@ -1,29 +1,30 @@
 // index.js
 import express from "express";
 import http from "http";
-import { WebSocketServer } from "ws";
+import { Server } from "socket.io";
+import cors from "cors";
 import dotenv from "dotenv";
-import { GoogleSTT } from "./stt.js";
-import { GoogleTTS } from "./tts.js";
-import { sendToN8nAgent } from "./n8n.js";
-import { startTeleCMIStream } from "./telecmi.js"; // ✅ make sure this exists
+import { startTeleCMIStream } from "./telecmi.js";
+
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ noServer: true });
+const io = new Server(server, {
+  cors: { origin: "*" }
+});
 
-const PORT = process.env.PORT || 10000;
-app.use(express.json());
+app.use(cors());
+app.use(express.json({ limit: "5mb" }));
 
-// ✅ TeleCMI Answer URL route
+// Step 2: Debug TeleCMI Webhook POST data
 app.post("/telecmi", async (req, res) => {
-  const session_uuid = req.body?.session_uuid;
-  console.log("[TeleCMI] Incoming call:", req.body);
+  console.log("📞 [TeleCMI] Incoming webhook payload:\n", JSON.stringify(req.body, null, 2));
 
+  const session_uuid = req.body?.session_uuid;
   const ws_url = process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws";
 
-  // 1. Send PCMO stream action
+  // Response for TeleCMI: Tell it to open a WebSocket stream
   const response = [
     {
       action: "stream",
@@ -33,98 +34,43 @@ app.post("/telecmi", async (req, res) => {
       stream_on_answer: true
     }
   ];
-  res.json(response);
 
-  // 2. Start stream via TeleCMI REST API
+  // Start stream via REST API if we have the session_uuid
   if (session_uuid) {
     try {
       await startTeleCMIStream(session_uuid, ws_url);
-      console.log("✅ Called TeleCMI REST stream API");
     } catch (err) {
-      console.error("❌ TeleCMI REST API error:", err.message);
+      console.error("❌ Failed to start TeleCMI REST stream");
     }
   } else {
-    console.warn("⚠️ Missing session_uuid in /telecmi");
+    console.warn("⚠️ Missing session_uuid in TeleCMI webhook payload");
   }
+
+  return res.json(response);
 });
 
-// ✅ Handle WebSocket upgrade
-server.on("upgrade", (req, socket, head) => {
-  if (req.url === "/ws") {
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit("connection", ws, req);
-    });
-  } else {
-    socket.destroy();
-  }
-});
-
-// ✅ WebSocket voice agent logic
-wss.on("connection", (ws, req) => {
-  const clientId = Math.random().toString(36).substring(2, 8);
-  console.log(`✅ WebSocket connected: ${clientId}`);
-
-  ws.send(JSON.stringify({ event: "ready" }));
-  console.log("📡 Sent 'ready' to TeleCMI");
+// WebSocket for audio streaming
+io.of("/ws").on("connection", (socket) => {
+  console.log(`✅ WebSocket connected: ${socket.id}`);
+  socket.emit("ready");
 
   const pingInterval = setInterval(() => {
-    ws.send(JSON.stringify({ event: "ping" }));
+    socket.emit("ping");
     console.log("⏱️ Sent ping");
   }, 5000);
 
-  let buffer = "";
-
-  ws.on("message", async (data) => {
-    try {
-      // ✅ Raw debug logging
-      console.log(`📥 Raw message (${clientId}):`, data.toString());
-
-      const msg = JSON.parse(data);
-
-      if (msg.event === "ping") {
-        ws.send(JSON.stringify({ event: "pong" }));
-        console.log("↩️ Replied with pong");
-        return;
-      }
-
-      if (msg.event === "media" && msg.media?.payload) {
-        const audioBuffer = Buffer.from(msg.media.payload, "base64");
-        const text = await GoogleSTT.transcribe(audioBuffer);
-
-        if (text) {
-          buffer += text + " ";
-          console.log("[STT]", text);
-
-          if (text.trim().endsWith(".")) {
-            const fullText = buffer.trim();
-            buffer = "";
-
-            const n8nReply = await sendToN8nAgent({
-              input: fullText,
-              phone: process.env.AGENT_PHONE || "+911203134402",
-              channel: "call"
-            });
-
-            if (n8nReply?.text) {
-              console.log("[n8n AI]", n8nReply.text);
-              const audio = await GoogleTTS.synthesize(n8nReply.text);
-              ws.send(JSON.stringify({ event: "audio-response", audio }));
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.error("❌ Error handling message:", err.message || err);
-    }
+  socket.on("disconnect", () => {
+    clearInterval(pingInterval);
+    console.log(`❌ WebSocket disconnected: ${socket.id}`);
   });
 
-  ws.on("close", () => {
-    console.log(`❌ WebSocket disconnected: ${clientId}`);
-    clearInterval(pingInterval);
+  socket.on("audio", (data) => {
+    console.log(`🎧 Received audio chunk (${data.length} bytes)`);
+    // Process STT, AI, and reply here...
   });
 });
 
-// ✅ Start server
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`✅ AI Agent server listening on port ${PORT}`);
 });
