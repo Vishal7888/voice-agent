@@ -2,9 +2,9 @@
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
-import { GoogleSTT } from "./services/stt.js";
-import { GoogleTTS } from "./services/tts.js";
-import { sendToN8nAgent } from "./services/n8n.js";
+import { GoogleSTT } from "./stt.js";
+import { GoogleTTS } from "./tts.js";
+import { sendToN8nAgent } from "./n8n.js";
 import dotenv from "dotenv";
 dotenv.config();
 
