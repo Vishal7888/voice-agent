@@ -15,16 +15,22 @@ const wss = new WebSocketServer({ noServer: true });
 const PORT = process.env.PORT || 10000;
 app.use(express.json());
 
-// TeleCMI webhook - Answer URL
 app.post("/telecmi", (req, res) => {
   console.log("[TeleCMI] Incoming call:", req.body);
-  return res.json({
-    action: "stream",
-    ws_url: process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws",
-    listen_mode: "caller",
-    voice_quality: "8000"
-  });
+
+  const response = [
+    {
+      action: "stream",
+      ws_url: process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws",
+      listen_mode: "caller",
+      voice_quality: "8000",
+      stream_on_answer: true // ✅ this is required
+    }
+  ];
+
+  return res.json(response);
 });
+
 
 // WebSocket upgrade route
 server.on("upgrade", (req, socket, head) => {
