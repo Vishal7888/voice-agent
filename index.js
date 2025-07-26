@@ -44,6 +44,19 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify({ event: "ready" }));
   console.log("📡 Sent 'ready' to TeleCMI");
 
+  // 🔊 Send welcome TTS within 1 second
+  setTimeout(async () => {
+    try {
+      const welcomeText = "Hi, how can I help you?";
+      const audio = await GoogleTTS.synthesize(welcomeText);
+      ws.send(JSON.stringify({ event: "audio-response", audio }));
+      console.log("🔊 Sent welcome message");
+    } catch (err) {
+      console.error("❌ Error sending welcome message:", err.message || err);
+    }
+  }, 1000);
+
+  // ⏱️ Keep-alive ping every 5 seconds
   const pingInterval = setInterval(() => {
     ws.send(JSON.stringify({ event: "ping" }));
     console.log("⏱️ Sent ping");
