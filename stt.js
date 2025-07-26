@@ -1,30 +1,30 @@
 // stt.js
 import speech from "@google-cloud/speech";
-import dotenv from "dotenv";
-dotenv.config();
-
-const credentials = JSON.parse(process.env.GOOGLE_STT_KEY);
 
 const client = new speech.SpeechClient({
-  credentials,
+  credentials: JSON.parse(process.env.GOOGLE_STT_KEY),
 });
 
 export const GoogleSTT = {
-  async transcribe(audioBuffer) {
+  transcribe: async (audioBuffer) => {
     const audioBytes = audioBuffer.toString("base64");
 
-    const [response] = await client.recognize({
+    const request = {
       audio: { content: audioBytes },
       config: {
         encoding: "LINEAR16",
         sampleRateHertz: 8000,
         languageCode: "en-US",
       },
-    });
+    };
 
-    const transcription = response.results
-      .map((result) => result.alternatives[0].transcript)
-      .join(" ");
+    const [response] = await client.recognize(request);
+    const transcription =
+      response.results
+        .map((result) => result.alternatives[0]?.transcript)
+        .join(" ")
+        .trim();
+
     return transcription;
   },
 };
