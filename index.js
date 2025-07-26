@@ -5,6 +5,7 @@ import { WebSocketServer } from "ws";
 import { GoogleSTT } from "./stt.js";
 import { GoogleTTS } from "./tts.js";
 import { sendToN8nAgent } from "./n8n.js";
+import { startTeleCMIStream } from "./telecmi.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -15,24 +16,35 @@ const wss = new WebSocketServer({ noServer: true });
 const PORT = process.env.PORT || 10000;
 app.use(express.json());
 
-app.post("/telecmi", (req, res) => {
+// ✅ /telecmi webhook endpoint
+app.post("/telecmi", async (req, res) => {
+  const session_uuid = req.body?.session_uuid;
   console.log("[TeleCMI] Incoming call:", req.body);
 
+  const ws_url = process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws";
+
+  // ✅ Respond with PCMO stream action
   const response = [
     {
       action: "stream",
-      ws_url: process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws",
+      ws_url,
       listen_mode: "caller",
       voice_quality: "8000",
-      stream_on_answer: true // ✅ this is required
+      stream_on_answer: true
     }
   ];
+
+  // ✅ Explicitly start the stream via TeleCMI REST API
+  if (session_uuid) {
+    await startTeleCMIStream(session_uuid);
+  } else {
+    console.warn("⚠️ session_uuid missing — cannot start stream");
+  }
 
   return res.json(response);
 });
 
-
-// WebSocket upgrade route
+// ✅ Upgrade HTTP -> WebSocket for TeleCMI
 server.on("upgrade", (req, socket, head) => {
   if (req.url === "/ws") {
     wss.handleUpgrade(req, socket, head, (ws) => {
@@ -43,7 +55,7 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
-// WebSocket voice logic
+// ✅ WebSocket agent logic
 wss.on("connection", (ws) => {
   console.log("✅ WebSocket connected");
 
@@ -57,18 +69,15 @@ wss.on("connection", (ws) => {
 
   let buffer = "";
 
-  ws.on("message", async (data) => {
+  ws.on("message", async (raw) => {
     try {
-      // ✅ Log full raw message from TeleCMI
-      console.log("📥 Raw TeleCMI message:", data.toString());
+      console.log("📩 Raw message:", raw.toString());
 
-      const msg = JSON.parse(data);
-
-      console.log("📥 Received event:", msg.event);
+      const msg = JSON.parse(raw);
 
       if (msg.event === "ping") {
         ws.send(JSON.stringify({ event: "pong" }));
-        console.log("↩️ Replied with pong");
+        console.log("↩️ Sent pong");
         return;
       }
 
@@ -84,22 +93,22 @@ wss.on("connection", (ws) => {
             const fullText = buffer.trim();
             buffer = "";
 
-            const n8nReply = await sendToN8nAgent({
+            const reply = await sendToN8nAgent({
               input: fullText,
               phone: process.env.AGENT_PHONE || "+911203134402",
               channel: "call"
             });
 
-            if (n8nReply?.text) {
-              console.log("[n8n AI]", n8nReply.text);
-              const audio = await GoogleTTS.synthesize(n8nReply.text);
+            if (reply?.text) {
+              console.log("[n8n AI]", reply.text);
+              const audio = await GoogleTTS.synthesize(reply.text);
               ws.send(JSON.stringify({ event: "audio-response", audio }));
             }
           }
         }
       }
     } catch (err) {
-      console.error("[Message Error]", err.message || err);
+      console.error("[WebSocket Error]", err.message || err);
     }
   });
 
