@@ -1,7 +1,7 @@
 // index.js
 import express from "express";
 import http from "http";
-import { Server } from "socket.io";
+import { WebSocketServer } from "ws";
 import { GoogleSTT } from "./stt.js";
 import { GoogleTTS } from "./tts.js";
 import { sendToN8nAgent } from "./n8n.js";
@@ -10,12 +10,7 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
+const wss = new WebSocketServer({ noServer: true });
 
 const PORT = process.env.PORT || 10000;
 app.use(express.json());
@@ -31,29 +26,42 @@ app.post("/telecmi", (req, res) => {
   });
 });
 
-// Socket.IO connection
-io.of("/ws").on("connection", (socket) => {
-  console.log("✅ WebSocket connected:", socket.id);
+// WebSocket upgrade route
+server.on("upgrade", (req, socket, head) => {
+  if (req.url === "/ws") {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
+  } else {
+    socket.destroy();
+  }
+});
 
-  // Send ready
-  socket.emit("message", JSON.stringify({ event: "ready" }));
+// WebSocket voice logic
+wss.on("connection", (ws) => {
+  console.log("✅ WebSocket connected");
+
+  ws.send(JSON.stringify({ event: "ready" }));
   console.log("📡 Sent 'ready' to TeleCMI");
 
-  // Start ping loop
   const pingInterval = setInterval(() => {
-    socket.emit("message", JSON.stringify({ event: "ping" }));
+    ws.send(JSON.stringify({ event: "ping" }));
     console.log("⏱️ Sent ping");
   }, 5000);
 
   let buffer = "";
 
-  socket.on("message", async (data) => {
+  ws.on("message", async (data) => {
     try {
+      // ✅ Log full raw message from TeleCMI
+      console.log("📥 Raw TeleCMI message:", data.toString());
+
       const msg = JSON.parse(data);
-      console.log("📥 Received:", msg.event);
+
+      console.log("📥 Received event:", msg.event);
 
       if (msg.event === "ping") {
-        socket.emit("message", JSON.stringify({ event: "pong" }));
+        ws.send(JSON.stringify({ event: "pong" }));
         console.log("↩️ Replied with pong");
         return;
       }
@@ -79,18 +87,18 @@ io.of("/ws").on("connection", (socket) => {
             if (n8nReply?.text) {
               console.log("[n8n AI]", n8nReply.text);
               const audio = await GoogleTTS.synthesize(n8nReply.text);
-              socket.emit("audio-response", audio);
+              ws.send(JSON.stringify({ event: "audio-response", audio }));
             }
           }
         }
       }
     } catch (err) {
-      console.error("[Socket Error]", err.message || err);
+      console.error("[Message Error]", err.message || err);
     }
   });
 
-  socket.on("disconnect", () => {
-    console.log("❌ WebSocket disconnected:", socket.id);
+  ws.on("close", () => {
+    console.log("❌ WebSocket disconnected");
     clearInterval(pingInterval);
   });
 });
