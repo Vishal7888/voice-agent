@@ -2,11 +2,11 @@
 import express from "express";
 import http from "http";
 import { WebSocketServer } from "ws";
+import dotenv from "dotenv";
 import { GoogleSTT } from "./stt.js";
 import { GoogleTTS } from "./tts.js";
 import { sendToN8nAgent } from "./n8n.js";
-import { startTeleCMIStream } from "./telecmi.js";
-import dotenv from "dotenv";
+import { startTeleCMIStream } from "./telecmi.js"; // ✅ make sure this exists
 dotenv.config();
 
 const app = express();
@@ -16,14 +16,14 @@ const wss = new WebSocketServer({ noServer: true });
 const PORT = process.env.PORT || 10000;
 app.use(express.json());
 
-// ✅ /telecmi webhook endpoint
+// ✅ TeleCMI Answer URL route
 app.post("/telecmi", async (req, res) => {
   const session_uuid = req.body?.session_uuid;
   console.log("[TeleCMI] Incoming call:", req.body);
 
   const ws_url = process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws";
 
-  // ✅ Respond with PCMO stream action
+  // 1. Send PCMO stream action
   const response = [
     {
       action: "stream",
@@ -33,18 +33,22 @@ app.post("/telecmi", async (req, res) => {
       stream_on_answer: true
     }
   ];
+  res.json(response);
 
-  // ✅ Explicitly start the stream via TeleCMI REST API
+  // 2. Start stream via TeleCMI REST API
   if (session_uuid) {
-    await startTeleCMIStream(session_uuid);
+    try {
+      await startTeleCMIStream(session_uuid, ws_url);
+      console.log("✅ Called TeleCMI REST stream API");
+    } catch (err) {
+      console.error("❌ TeleCMI REST API error:", err.message);
+    }
   } else {
-    console.warn("⚠️ session_uuid missing — cannot start stream");
+    console.warn("⚠️ Missing session_uuid in /telecmi");
   }
-
-  return res.json(response);
 });
 
-// ✅ Upgrade HTTP -> WebSocket for TeleCMI
+// ✅ Handle WebSocket upgrade
 server.on("upgrade", (req, socket, head) => {
   if (req.url === "/ws") {
     wss.handleUpgrade(req, socket, head, (ws) => {
@@ -55,9 +59,10 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
-// ✅ WebSocket agent logic
-wss.on("connection", (ws) => {
-  console.log("✅ WebSocket connected");
+// ✅ WebSocket voice agent logic
+wss.on("connection", (ws, req) => {
+  const clientId = Math.random().toString(36).substring(2, 8);
+  console.log(`✅ WebSocket connected: ${clientId}`);
 
   ws.send(JSON.stringify({ event: "ready" }));
   console.log("📡 Sent 'ready' to TeleCMI");
@@ -69,15 +74,16 @@ wss.on("connection", (ws) => {
 
   let buffer = "";
 
-  ws.on("message", async (raw) => {
+  ws.on("message", async (data) => {
     try {
-      console.log("📩 Raw message:", raw.toString());
+      // ✅ Raw debug logging
+      console.log(`📥 Raw message (${clientId}):`, data.toString());
 
-      const msg = JSON.parse(raw);
+      const msg = JSON.parse(data);
 
       if (msg.event === "ping") {
         ws.send(JSON.stringify({ event: "pong" }));
-        console.log("↩️ Sent pong");
+        console.log("↩️ Replied with pong");
         return;
       }
 
@@ -93,31 +99,32 @@ wss.on("connection", (ws) => {
             const fullText = buffer.trim();
             buffer = "";
 
-            const reply = await sendToN8nAgent({
+            const n8nReply = await sendToN8nAgent({
               input: fullText,
               phone: process.env.AGENT_PHONE || "+911203134402",
               channel: "call"
             });
 
-            if (reply?.text) {
-              console.log("[n8n AI]", reply.text);
-              const audio = await GoogleTTS.synthesize(reply.text);
+            if (n8nReply?.text) {
+              console.log("[n8n AI]", n8nReply.text);
+              const audio = await GoogleTTS.synthesize(n8nReply.text);
               ws.send(JSON.stringify({ event: "audio-response", audio }));
             }
           }
         }
       }
     } catch (err) {
-      console.error("[WebSocket Error]", err.message || err);
+      console.error("❌ Error handling message:", err.message || err);
     }
   });
 
   ws.on("close", () => {
-    console.log("❌ WebSocket disconnected");
+    console.log(`❌ WebSocket disconnected: ${clientId}`);
     clearInterval(pingInterval);
   });
 });
 
+// ✅ Start server
 server.listen(PORT, () => {
   console.log(`✅ AI Agent server listening on port ${PORT}`);
 });
