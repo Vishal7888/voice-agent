@@ -3,8 +3,10 @@ import speech from "@google-cloud/speech";
 import dotenv from "dotenv";
 dotenv.config();
 
+const credentials = JSON.parse(process.env.GOOGLE_STT_KEY);
+
 const client = new speech.SpeechClient({
-  credentials: JSON.parse(process.env.GOOGLE_STT_KEY)
+  credentials,
 });
 
 export const GoogleSTT = {
@@ -16,14 +18,13 @@ export const GoogleSTT = {
       config: {
         encoding: "LINEAR16",
         sampleRateHertz: 8000,
-        languageCode: "en-US"
-      }
+        languageCode: "en-US",
+      },
     });
 
     const transcription = response.results
-      .map(result => result.alternatives[0].transcript)
+      .map((result) => result.alternatives[0].transcript)
       .join(" ");
-
     return transcription;
-  }
+  },
 };
