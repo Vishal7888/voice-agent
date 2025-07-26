@@ -15,7 +15,7 @@ const io = new Server(server);
 const PORT = process.env.PORT || 10000;
 app.use(express.json());
 
-// PIOPIY Answer URL endpoint
+// ✅ Answer URL for PIOPIY / TeleCMI
 app.post("/telecmi", (req, res) => {
   console.log("[TeleCMI] Call received:", req.body);
   return res.json({
@@ -26,15 +26,19 @@ app.post("/telecmi", (req, res) => {
   });
 });
 
-// WebSocket audio handling
+// ✅ WebSocket handler
 io.of("/ws").on("connection", (socket) => {
   console.log("[Socket.IO] Client connected:", socket.id);
-  socket.emit("ready", { message: "AI agent ready to receive audio" });
 
-  // Keep-alive every 10 seconds
-  const keepAlive = setInterval(() => {
-    socket.emit("ping", { timestamp: Date.now() });
-  }, 10000);
+  // ✅ Send ready signal to TeleCMI
+  socket.emit("ready");
+  console.log("[Socket.IO] Sent 'ready' to TeleCMI");
+
+  // ✅ Start keep-alive ping every 5 seconds
+  const pingInterval = setInterval(() => {
+    socket.emit("ping");
+    console.log("[Socket.IO] Sent keep-alive ping");
+  }, 5000);
 
   let buffer = "";
 
@@ -68,12 +72,8 @@ io.of("/ws").on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    clearInterval(keepAlive);
+    clearInterval(pingInterval); // ✅ Stop keep-alive on disconnect
     console.log("[Socket.IO] Disconnected:", socket.id);
-  });
-
-  socket.on("error", (err) => {
-    console.error("[Socket.IO Error]", err);
   });
 });
 
