@@ -1,12 +1,12 @@
 import { startTeleCMIStream } from "./telecmi.js";
 
 app.post("/telecmi", async (req, res) => {
-  const call_id = req.body?.call_id;
+  const session_uuid = req.body?.session_uuid;
   console.log("[TeleCMI] Incoming call:", req.body);
 
   const ws_url = process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws";
 
-  // Respond with standard PCMO stream action
+  // Respond with PCMO stream action
   const response = [
     {
       action: "stream",
@@ -17,11 +17,11 @@ app.post("/telecmi", async (req, res) => {
     }
   ];
 
-  // 🔁 Also explicitly start the stream via REST API
-  if (call_id) {
-    await startTeleCMIStream(call_id, ws_url);
+  // ✅ Explicitly start the stream using TeleCMI REST API
+  if (session_uuid) {
+    await startTeleCMIStream(session_uuid);
   } else {
-    console.warn("⚠️ No call_id received from TeleCMI — cannot start REST stream.");
+    console.warn("⚠️ Missing session_uuid in TeleCMI webhook — cannot start stream");
   }
 
   return res.json(response);
