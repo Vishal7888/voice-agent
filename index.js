@@ -15,33 +15,27 @@ const io = new Server(server);
 const PORT = process.env.PORT || 10000;
 app.use(express.json());
 
-/**
- * This endpoint is used in PIOPIY as the "Answer URL"
- * It instructs TeleCMI to connect the call audio via WebSocket
- */
+// PIOPIY Answer URL endpoint
 app.post("/telecmi", (req, res) => {
   console.log("[TeleCMI] Call received:", req.body);
-
-  const wsUrl = process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws";
-
-  return res.json([
-    {
-      action: "connect",
-      from: "+911203134402",
-      to: "agent",
-      type: "websocket",
-      url: wsUrl,
-      headers: {
-        caller: req.body.caller_id || "",
-        uuid: req.body.uuid || ""
-      }
-    }
-  ]);
+  return res.json({
+    action: "stream",
+    ws_url: process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws",
+    listen_mode: "caller",
+    voice_quality: "8000"
+  });
 });
 
-// WebSocket handler
+// WebSocket audio handling
 io.of("/ws").on("connection", (socket) => {
   console.log("[Socket.IO] Client connected:", socket.id);
+  socket.emit("ready", { message: "AI agent ready to receive audio" });
+
+  // Keep-alive every 10 seconds
+  const keepAlive = setInterval(() => {
+    socket.emit("ping", { timestamp: Date.now() });
+  }, 10000);
+
   let buffer = "";
 
   socket.on("audio", async (chunk) => {
@@ -74,7 +68,12 @@ io.of("/ws").on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    clearInterval(keepAlive);
     console.log("[Socket.IO] Disconnected:", socket.id);
+  });
+
+  socket.on("error", (err) => {
+    console.error("[Socket.IO Error]", err);
   });
 });
 
