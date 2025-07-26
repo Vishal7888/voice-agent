@@ -28,13 +28,15 @@ app.post("/telecmi", (req, res) => {
 
 // WebSocket voice agent
 io.of("/ws").on("connection", (socket) => {
-  console.log("[Socket.IO] Connected:", socket.id);
+  console.log("✅ WebSocket connected:", socket.id);
 
-  // Send ready signal immediately
+  // Send 'ready' signal to TeleCMI
   socket.emit("message", JSON.stringify({ event: "ready" }));
+  console.log("📡 Sent 'ready' to TeleCMI");
 
-  // Start ping every 5 seconds to keep connection alive
+  // Keep-alive ping every 5 seconds
   const pingInterval = setInterval(() => {
+    console.log("⏱️ Sending ping to TeleCMI");
     socket.emit("message", JSON.stringify({ event: "ping" }));
   }, 5000);
 
@@ -44,8 +46,18 @@ io.of("/ws").on("connection", (socket) => {
     try {
       const msg = JSON.parse(data);
 
-      // Handle audio from TeleCMI
-      if (msg.event === "media" && msg.media && msg.media.payload) {
+      // Log all message events for debugging
+      console.log("📥 Received message:", msg.event);
+
+      // Handle ping from TeleCMI
+      if (msg.event === "ping") {
+        console.log("↩️ Received ping from TeleCMI, replying with pong");
+        socket.emit("message", JSON.stringify({ event: "pong" }));
+        return;
+      }
+
+      // Handle audio
+      if (msg.event === "media" && msg.media?.payload) {
         const audioBuffer = Buffer.from(msg.media.payload, "base64");
         const text = await GoogleSTT.transcribe(audioBuffer);
 
@@ -53,7 +65,7 @@ io.of("/ws").on("connection", (socket) => {
           buffer += text + " ";
           console.log("[STT]", text);
 
-          if (text.endsWith(".")) {
+          if (text.trim().endsWith(".")) {
             const fullText = buffer.trim();
             buffer = "";
 
@@ -77,7 +89,7 @@ io.of("/ws").on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log("[Socket.IO] Disconnected:", socket.id);
+    console.log("❌ WebSocket disconnected:", socket.id);
     clearInterval(pingInterval);
   });
 });
