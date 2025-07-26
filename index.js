@@ -15,15 +15,28 @@ const io = new Server(server);
 const PORT = process.env.PORT || 10000;
 app.use(express.json());
 
-// Answer URL for PIOPIY
+/**
+ * This endpoint is used in PIOPIY as the "Answer URL"
+ * It instructs TeleCMI to connect the call audio via WebSocket
+ */
 app.post("/telecmi", (req, res) => {
   console.log("[TeleCMI] Call received:", req.body);
-  return res.json({
-    action: "stream",
-    ws_url: process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws",
-    listen_mode: "caller",
-    voice_quality: "8000"
-  });
+
+  const wsUrl = process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws";
+
+  return res.json([
+    {
+      action: "connect",
+      from: "+911203134402",
+      to: "agent",
+      type: "websocket",
+      url: wsUrl,
+      headers: {
+        caller: req.body.caller_id || "",
+        uuid: req.body.uuid || ""
+      }
+    }
+  ]);
 });
 
 // WebSocket handler
