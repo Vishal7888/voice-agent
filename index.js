@@ -15,9 +15,9 @@ const io = new Server(server);
 const PORT = process.env.PORT || 10000;
 app.use(express.json());
 
-// ✅ Answer URL for PIOPIY / TeleCMI
+// TeleCMI POST route
 app.post("/telecmi", (req, res) => {
-  console.log("[TeleCMI] Call received:", req.body);
+  console.log("[TeleCMI] Incoming call:", req.body);
   return res.json({
     action: "stream",
     ws_url: process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws",
@@ -26,54 +26,59 @@ app.post("/telecmi", (req, res) => {
   });
 });
 
-// ✅ WebSocket handler
+// WebSocket voice agent
 io.of("/ws").on("connection", (socket) => {
-  console.log("[Socket.IO] Client connected:", socket.id);
+  console.log("[Socket.IO] Connected:", socket.id);
 
-  // ✅ Send ready signal to TeleCMI
-  socket.emit("ready");
-  console.log("[Socket.IO] Sent 'ready' to TeleCMI");
+  // Send ready signal immediately
+  socket.emit("message", JSON.stringify({ event: "ready" }));
 
-  // ✅ Start keep-alive ping every 5 seconds
+  // Start ping every 5 seconds to keep connection alive
   const pingInterval = setInterval(() => {
-    socket.emit("ping");
-    console.log("[Socket.IO] Sent keep-alive ping");
+    socket.emit("message", JSON.stringify({ event: "ping" }));
   }, 5000);
 
   let buffer = "";
 
-  socket.on("audio", async (chunk) => {
+  socket.on("message", async (data) => {
     try {
-      const text = await GoogleSTT.transcribe(chunk);
-      if (text) {
-        buffer += text + " ";
-        console.log("[STT]", text);
+      const msg = JSON.parse(data);
 
-        if (text.endsWith(".")) {
-          const fullText = buffer.trim();
-          buffer = "";
+      // Handle audio from TeleCMI
+      if (msg.event === "media" && msg.media && msg.media.payload) {
+        const audioBuffer = Buffer.from(msg.media.payload, "base64");
+        const text = await GoogleSTT.transcribe(audioBuffer);
 
-          const n8nReply = await sendToN8nAgent({
-            input: fullText,
-            phone: process.env.AGENT_PHONE || "+911203134402",
-            channel: "call"
-          });
+        if (text) {
+          buffer += text + " ";
+          console.log("[STT]", text);
 
-          if (n8nReply?.text) {
-            console.log("[n8n AI]", n8nReply.text);
-            const audio = await GoogleTTS.synthesize(n8nReply.text);
-            socket.emit("audio-response", audio);
+          if (text.endsWith(".")) {
+            const fullText = buffer.trim();
+            buffer = "";
+
+            const n8nReply = await sendToN8nAgent({
+              input: fullText,
+              phone: process.env.AGENT_PHONE || "+911203134402",
+              channel: "call"
+            });
+
+            if (n8nReply?.text) {
+              console.log("[n8n AI]", n8nReply.text);
+              const audio = await GoogleTTS.synthesize(n8nReply.text);
+              socket.emit("audio-response", audio);
+            }
           }
         }
       }
     } catch (err) {
-      console.error("[ERROR]", err);
+      console.error("[Message Error]", err.message || err);
     }
   });
 
   socket.on("disconnect", () => {
-    clearInterval(pingInterval); // ✅ Stop keep-alive on disconnect
     console.log("[Socket.IO] Disconnected:", socket.id);
+    clearInterval(pingInterval);
   });
 });
 
