@@ -20,7 +20,7 @@ app.post("/telecmi", (req, res) => {
   console.log("[TeleCMI] Call received:", req.body);
   return res.json({
     action: "stream",
-    ws_url: process.env.WS_URL || "wss://your-app.onrender.com/ws",
+    ws_url: process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws",
     listen_mode: "caller",
     voice_quality: "8000"
   });
