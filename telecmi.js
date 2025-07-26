@@ -1,28 +1,31 @@
-import { startTeleCMIStream } from "./telecmi.js";
+// telecmi.js
+import axios from "axios";
+import dotenv from "dotenv";
+dotenv.config();
 
-app.post("/telecmi", async (req, res) => {
-  const session_uuid = req.body?.session_uuid;
-  console.log("[TeleCMI] Incoming call:", req.body);
+export async function startTeleCMIStream(session_uuid) {
+  const app_id = process.env.TELECMI_APP_ID;
+  const app_secret = process.env.TELECMI_APP_SECRET;
 
-  const ws_url = process.env.WS_URL || "wss://voice-agent-tcxk.onrender.com/ws";
-
-  // Respond with PCMO stream action
-  const response = [
-    {
-      action: "stream",
-      ws_url,
-      listen_mode: "caller",
-      voice_quality: "8000",
-      stream_on_answer: true
-    }
-  ];
-
-  // ✅ Explicitly start the stream using TeleCMI REST API
-  if (session_uuid) {
-    await startTeleCMIStream(session_uuid);
-  } else {
-    console.warn("⚠️ Missing session_uuid in TeleCMI webhook — cannot start stream");
+  if (!app_id || !app_secret) {
+    console.error("❌ Missing TELECMI_APP_ID or TELECMI_APP_SECRET");
+    return;
   }
 
-  return res.json(response);
-});
+  try {
+    const url = `https://chub.telecmi.com/v1/p/call/stream/start`;
+    const response = await axios.post(url, {
+      session_uuid
+    }, {
+      headers: {
+        "x-app-id": app_id,
+        "x-app-secret": app_secret,
+        "Content-Type": "application/json"
+      }
+    });
+
+    console.log("📡 TeleCMI stream start response:", response.data);
+  } catch (err) {
+    console.error("❌ Failed to start TeleCMI stream:", err?.response?.data || err.message);
+  }
+}
