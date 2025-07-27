@@ -7,9 +7,7 @@ import { startTeleCMIStream } from './telecmi.js';
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: '*'
-  }
+  cors: { origin: '*' }
 });
 
 const PORT = process.env.PORT || 10000;
@@ -46,9 +44,9 @@ app.post('/telecmi', async (req, res) => {
   }
 
   try {
-    const ws_url = 'wss://voice-agent-tcxk.onrender.com:10000/ws'; // ✅ With port 10000
+    const ws_url = 'wss://voice-agent-tcxk.onrender.com/ws'; // ✅ No port needed
     await startTeleCMIStream(session_uuid, ws_url);
-    res.json({ socketUrl: ws_url }); // ✅ Must return this to TeleCMI
+    res.json({ socketUrl: ws_url });
   } catch (error) {
     console.error('❌ Failed to start TeleCMI stream:', error.response?.data || error.message);
     res.status(500).send('Stream start failed');
