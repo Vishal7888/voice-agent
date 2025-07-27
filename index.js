@@ -1,8 +1,8 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const axios = require('axios');
-const cors = require('cors');
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import axios from 'axios';
+import cors from 'cors';
 
 const app = express();
 const server = http.createServer(app);
@@ -19,7 +19,7 @@ const TELECMI_APP_SECRET = process.env.TELECMI_APP_SECRET;
 
 // Middleware
 app.use(cors());
-app.use(express.json()); // 💡 required to parse JSON body
+app.use(express.json());
 
 // ✅ WebSocket handler
 io.of('/ws').on('connection', (socket) => {
@@ -31,7 +31,6 @@ io.of('/ws').on('connection', (socket) => {
     console.log('[Socket.IO] Pong received');
   });
 
-  // Optional: send keep-alive ping every 5 seconds
   const pingInterval = setInterval(() => {
     socket.emit('ping');
   }, 5000);
@@ -42,7 +41,7 @@ io.of('/ws').on('connection', (socket) => {
   });
 });
 
-// ✅ Route to receive TeleCMI webhook
+// ✅ Webhook handler
 app.post('/telecmi', async (req, res) => {
   console.log('[TeleCMI] Incoming webhook payload:', JSON.stringify(req.body, null, 2));
 
@@ -62,7 +61,7 @@ app.post('/telecmi', async (req, res) => {
   }
 });
 
-// ✅ Function to start REST audio stream via TeleCMI
+// ✅ Start TeleCMI REST stream
 async function startTeleCMIStream(call_id, session_uuid) {
   const payload = {
     app_id: TELECMI_APP_ID,
