@@ -1,8 +1,8 @@
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
-import axios from 'axios';
 import cors from 'cors';
+import { startTeleCMIStream } from './telecmi.js'; // ✅ Corrected import
 
 const app = express();
 const server = http.createServer(app);
@@ -12,10 +12,7 @@ const io = new Server(server, {
   }
 });
 
-// Load environment variables
 const PORT = process.env.PORT || 10000;
-const TELECMI_APP_ID = process.env.TELECMI_APP_ID;
-const TELECMI_APP_SECRET = process.env.TELECMI_APP_SECRET;
 
 // Middleware
 app.use(cors());
@@ -24,12 +21,9 @@ app.use(express.json());
 // ✅ WebSocket handler
 io.of('/ws').on('connection', (socket) => {
   console.log('[Socket.IO] WebSocket client connected');
-
   socket.emit('ready', { message: 'Socket connected and ready' });
 
-  socket.on('pong', () => {
-    console.log('[Socket.IO] Pong received');
-  });
+  socket.on('pong', () => console.log('[Socket.IO] Pong received'));
 
   const pingInterval = setInterval(() => {
     socket.emit('ping');
@@ -41,40 +35,26 @@ io.of('/ws').on('connection', (socket) => {
   });
 });
 
-// ✅ Webhook handler
+// ✅ TeleCMI webhook
 app.post('/telecmi', async (req, res) => {
   console.log('[TeleCMI] Incoming webhook payload:', JSON.stringify(req.body, null, 2));
 
-  const { call_id, session_uuid } = req.body;
+  const { session_uuid } = req.body;
 
-  if (!call_id || !session_uuid) {
-    console.error('❌ Missing call_id or session_uuid from TeleCMI');
-    return res.status(400).send('Missing call_id or session_uuid');
+  if (!session_uuid) {
+    console.error('❌ Missing session_uuid from TeleCMI');
+    return res.status(400).send('Missing session_uuid');
   }
 
   try {
-    await startTeleCMIStream(call_id, session_uuid);
-    res.sendStatus(200);
+    const ws_url = 'wss://voice-agent-tcxk.onrender.com/ws'; // ✅ Your WebSocket URL
+    await startTeleCMIStream(session_uuid, ws_url);
+    res.json({ socketUrl: ws_url }); // ✅ Required by CHUB Streaming spec
   } catch (error) {
     console.error('❌ Failed to start TeleCMI stream:', error.response?.data || error.message);
     res.status(500).send('Stream start failed');
   }
 });
-
-// ✅ Start TeleCMI REST stream
-async function startTeleCMIStream(call_id, session_uuid) {
-  const payload = {
-    app_id: TELECMI_APP_ID,
-    app_secret: TELECMI_APP_SECRET,
-    call_id,
-    session_uuid
-  };
-
-  console.log('[TeleCMI] Starting stream with payload:', payload);
-
-  const response = await axios.post('https://chub.telecmi.com/v1/start_stream', payload);
-  console.log('✅ TeleCMI REST stream started:', response.data);
-}
 
 // ✅ Start server
 server.listen(PORT, () => {
