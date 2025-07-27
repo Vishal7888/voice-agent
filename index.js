@@ -2,7 +2,6 @@ import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import { startTeleCMIStream } from './telecmi.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -32,25 +31,14 @@ io.of('/ws').on('connection', (socket) => {
   });
 });
 
-// TeleCMI webhook
-app.post('/telecmi', async (req, res) => {
+// TeleCMI CHUB webhook
+app.post('/telecmi', (req, res) => {
   console.log('[TeleCMI] Incoming webhook payload:', JSON.stringify(req.body, null, 2));
 
-  const { session_uuid } = req.body;
-
-  if (!session_uuid) {
-    console.error('❌ Missing session_uuid from TeleCMI');
-    return res.status(400).send('Missing session_uuid');
-  }
-
-  try {
-    const ws_url = 'wss://voice-agent-tcxk.onrender.com/ws'; // ✅ No port needed
-    await startTeleCMIStream(session_uuid, ws_url);
-    res.json({ socketUrl: ws_url });
-  } catch (error) {
-    console.error('❌ Failed to start TeleCMI stream:', error.response?.data || error.message);
-    res.status(500).send('Stream start failed');
-  }
+  // ✅ Return WebSocket URL for TeleCMI CHUB to connect to
+  res.json({
+    socketUrl: 'wss://voice-agent-tcxk.onrender.com/ws'
+  });
 });
 
 server.listen(PORT, () => {
