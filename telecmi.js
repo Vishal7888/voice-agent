@@ -18,9 +18,8 @@ export async function startTeleCMIStream(session_uuid, ws_url) {
 
   try {
     const response = await axios.post(url, payload);
-    console.log("✅ TeleCMI REST stream response:", response.data);
+    console.log("✅ TeleCMI REST stream started:", response.data);
   } catch (error) {
     console.error("❌ TeleCMI REST stream error:", error.response?.data || error.message);
-    throw error;
   }
 }
