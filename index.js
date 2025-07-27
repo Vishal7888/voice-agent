@@ -2,7 +2,7 @@ import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import { startTeleCMIStream } from './telecmi.js'; // ✅ Corrected import
+import { startTeleCMIStream } from './telecmi.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -14,11 +14,10 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 10000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// ✅ WebSocket handler
+// WebSocket handler
 io.of('/ws').on('connection', (socket) => {
   console.log('[Socket.IO] WebSocket client connected');
   socket.emit('ready', { message: 'Socket connected and ready' });
@@ -35,7 +34,7 @@ io.of('/ws').on('connection', (socket) => {
   });
 });
 
-// ✅ TeleCMI webhook
+// TeleCMI webhook
 app.post('/telecmi', async (req, res) => {
   console.log('[TeleCMI] Incoming webhook payload:', JSON.stringify(req.body, null, 2));
 
@@ -47,16 +46,15 @@ app.post('/telecmi', async (req, res) => {
   }
 
   try {
-    const ws_url = 'wss://voice-agent-tcxk.onrender.com/ws'; // ✅ Your WebSocket URL
+    const ws_url = 'wss://voice-agent-tcxk.onrender.com:10000/ws'; // ✅ With port 10000
     await startTeleCMIStream(session_uuid, ws_url);
-    res.json({ socketUrl: ws_url }); // ✅ Required by CHUB Streaming spec
+    res.json({ socketUrl: ws_url }); // ✅ Must return this to TeleCMI
   } catch (error) {
     console.error('❌ Failed to start TeleCMI stream:', error.response?.data || error.message);
     res.status(500).send('Stream start failed');
   }
 });
 
-// ✅ Start server
 server.listen(PORT, () => {
   console.log(`✅ AI Agent server listening on port ${PORT}`);
 });
