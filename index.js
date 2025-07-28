@@ -32,9 +32,9 @@ io.of('/ws').on('connection', (socket) => {
 app.post('/telecmi', (req, res) => {
   console.log('[TeleCMI] Incoming webhook payload:', JSON.stringify(req.body, null, 2));
 
-  // Always respond with WebSocket URL
+  // Respond with **ws://** (not wss://)
   res.json({
-    socketUrl: 'wss://voice-agent-tcxk.onrender.com/ws'
+    socketUrl: 'ws://voice-agent-tcxk.onrender.com/ws'
   });
 });
 
